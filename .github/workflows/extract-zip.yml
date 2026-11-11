@@ -1,1 +1,58 @@
+name: Extract project ZIP
 
+on:
+  push:
+    paths:
+      - "Befrest-Source.zip"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract source archive
+        shell: bash
+        run: |
+          if [ ! -f "Befrest-Source.zip" ]; then
+            echo "Befrest-Source.zip was not found in repository root."
+            exit 1
+          fi
+          mkdir -p /tmp/befrest-source
+          unzip -q -o "Befrest-Source.zip" -d /tmp/befrest-source
+
+          # Accept either a top-level project folder or files directly in the ZIP.
+          SOURCE="/tmp/befrest-source"
+          if [ -d "/tmp/befrest-source/Befrest" ]; then
+            SOURCE="/tmp/befrest-source/Befrest"
+          elif [ -d "/tmp/befrest-source/Hamrah-Share" ]; then
+            SOURCE="/tmp/befrest-source/Hamrah-Share"
+          else
+            FIRST_DIR="$(find /tmp/befrest-source -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+            if [ -n "$FIRST_DIR" ] && [ "$(find /tmp/befrest-source -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]; then
+              SOURCE="$FIRST_DIR"
+            fi
+          fi
+
+          # Copy project contents into repository root, preserving workflow files.
+          rsync -a --exclude='.git/' --exclude='.github/' "$SOURCE"/ ./
+          rm -f "Befrest-Source.zip"
+
+      - name: Commit extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No extracted changes to commit."
+          else
+            git commit -m "Extract Befrest source archive"
+            git push
+          fi
